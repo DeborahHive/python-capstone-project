@@ -131,7 +131,7 @@ def sign_up():
         else:
             conn.commit()
             print(f"Account created successfully! Your account number is {account_number}.")
-            # log_in()
+            log_in()
 
 
 def log_in():
