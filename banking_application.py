@@ -2,6 +2,7 @@ import sqlite3
 import re
 import hashlib
 import random
+import time
 
 from getpass import getpass
 
@@ -135,7 +136,79 @@ def sign_up():
 
 
 def log_in():
-    pass
+    attempts = 3
+
+    with sqlite3.connect(USERS_DB) as conn:
+        cursor = conn.cursor()
+
+        while True:
+            while attempts > 0:
+                username_pattern = r"^(?=.{6,20}$)[A-Za-z][A-Za-z0-9]*$"
+                email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+
+                username_or_email = input("Enter your username or email: ").strip()
+
+                if not username_or_email:
+                    print("This field cannot be blank.")
+                    continue
+
+                if not (re.fullmatch(username_pattern, username_or_email)) or (re.fullmatch(email_pattern, username_or_email)):
+                    print("Invalid username or email")
+                    continue
+
+                password1 = getpass("Enter your password: ").strip()
+
+                if not password1:
+                    print("This field cannot be blank.")
+                    continue
+                
+                hashed_password = hashlib.sha256(password1.encode()).hexdigest()
+
+                cursor.execute("SELECT * FROM users WHERE (username=? OR email=?) AND password=?", (username_or_email, username_or_email, hashed_password))
+                user = cursor.fetchone()
+
+                if user:
+                    print("Log in successful")
+                    homepage()
+                    return True
+                
+                else: 
+                    attempts -= 1
+                    print(f"Invalid credentials")
+            
+            print("Too many failed attempts. Please wait two minutes before trying again.")
+            time.sleep(120)
+            attempts = 3
+
+def homepage():
+    menu = """
+print("------------------HOME🏡------------------------)
+print("Choose an action:")
+1. Deposit
+2. Withdrawal
+3. Transfer
+4. Transaction History
+5. Quit
+"""
+    while True:
+        print(menu)
+        choice = input("Choose an option: ").strip()
+
+        if choice == "1":
+            print("Deposit")
+
+        elif choice == "2":
+            print("Withdrawal")
+        
+        elif choice == "3":
+            print("Transfer")
+
+        elif choice == "4":
+            print("Transaction History")
+
+        elif choice == "5":
+            break
+
 
 menu = """
 1. Sign Up
