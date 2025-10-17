@@ -12,7 +12,7 @@ with sqlite3.connect(USERS_DB) as conn:
     cursor = conn.cursor()
     cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT NOT NULL CHECK (full_name <> ''),
     username TEXT NOT NULL UNIQUE CHECK (username <> ''),
     email TEXT NOT NULL UNIQUE CHECK (email <> ''),
@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS users (
     account_number TEXT NOT NULL UNIQUE
 );
 """)
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN balance REAL NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        print("'balance' column already exist.")
+
+    cursor.execute("UPDATE users SET balance = initial_deposit WHERE balance = 0")
 
 def account_number_generator(cursor):
     while True:
@@ -57,7 +63,7 @@ def sign_up():
         full_name = full_name.title()
 
     while True:
-        username_pattern = r"^(?=.{6,20}$)[A-Za-z][A-Za-z0-9]*$"
+        username_pattern = r"^(?=.{3,20}$)[A-Za-z][A-Za-z0-9]*$"
         username = input("Enter your username: ").strip()
 
         if not username:
@@ -119,8 +125,9 @@ def sign_up():
     with sqlite3.connect(USERS_DB) as conn:
         cursor = conn.cursor()
         account_number = account_number_generator(cursor)
+        balance = initial_deposit
         try:
-            cursor.execute("INSERT INTO users (full_name, username, email, password, initial_deposit, account_number) VALUES (?, ?, ?, ?, ?, ?)", (full_name, username, email, hashed_password, initial_deposit, account_number))
+            cursor.execute("INSERT INTO users (full_name, username, email, password, initial_deposit, account_number, balance) VALUES (?, ?, ?, ?, ?, ?, ?)", (full_name, username, email, hashed_password, initial_deposit, account_number, balance))
         except sqlite3.IntegrityError as exc:
             exc = str(exc)
             if exc == "UNIQUE constraint failed: users.email":
@@ -169,7 +176,7 @@ def log_in():
 
                 if user:
                     print("Log in successful")
-                    homepage()
+                    homepage(user[0])
                     return True
                 
                 else: 
@@ -180,7 +187,7 @@ def log_in():
             time.sleep(120)
             attempts = 3
 
-def homepage():
+def homepage(user_id):
     menu = """
 print("------------------HOME🏡------------------------)
 print("Choose an action:")
@@ -188,26 +195,55 @@ print("Choose an action:")
 2. Withdrawal
 3. Transfer
 4. Transaction History
-5. Quit
+5. Logout
 """
     while True:
         print(menu)
         choice = input("Choose an option: ").strip()
 
         if choice == "1":
-            print("Deposit")
+            deposit(user_id)
 
         elif choice == "2":
-            print("Withdrawal")
+            withdrawal()
         
         elif choice == "3":
-            print("Transfer")
+            transfer()
 
         elif choice == "4":
-            print("Transaction History")
+            transaction_history()
 
         elif choice == "5":
             break
+
+def deposit(user_id):
+    with sqlite3.connect(USERS_DB) as conn:
+        cursor = conn.cursor()
+
+        while True:
+            try:
+                deposit_amt = float(input("Enter deposit amount: ₦"))
+            except ValueError:
+                print("Please, enter a valid number.")
+            else:
+                if deposit_amt <= 0:
+                    print("The amount must be greater than 0")
+                    continue
+                break
+
+        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (deposit_amt, user_id))
+        conn.commit()
+        print(f"₦{deposit_amt:.2f} deposited successfully!")
+
+def withdrawal():
+    pass
+
+def transfer():
+    pass
+
+def transaction_history():
+    pass
+
 
 
 menu = """
