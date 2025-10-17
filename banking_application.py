@@ -205,7 +205,7 @@ print("Choose an action:")
             deposit(user_id)
 
         elif choice == "2":
-            withdrawal()
+            withdrawal(user_id)
         
         elif choice == "3":
             transfer()
@@ -225,18 +225,43 @@ def deposit(user_id):
                 deposit_amt = float(input("Enter deposit amount: ₦"))
             except ValueError:
                 print("Please, enter a valid number.")
-            else:
-                if deposit_amt <= 0:
-                    print("The amount must be greater than 0")
-                    continue
-                break
+                continue
+            if deposit_amt <= 0:
+                print("The amount must be greater than 0")
+                continue
+            break
 
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (deposit_amt, user_id))
         conn.commit()
         print(f"₦{deposit_amt:.2f} deposited successfully!")
 
-def withdrawal():
-    pass
+def withdrawal(user_id):
+    with sqlite3.connect(USERS_DB) as conn:
+        cursor = conn.cursor()
+
+        while True:
+            try:
+                withdrawal_amt = float(input("Enter the amount you want to withdraw: ₦"))
+            except ValueError:
+                print("Please, enter a valid number.")
+                continue
+            if withdrawal_amt <= 0:
+                print("The amount must be greater than 0.")
+                continue
+
+            cursor.execute("SELECT balance FROM users where user_id = ?", (user_id,))
+            balance = cursor.fetchone()[0]
+
+            if withdrawal_amt > balance:
+                print(f"Insufficient funds. Your current balance is ₦{balance:.2f}")
+                continue
+
+            updated_balance = balance - withdrawal_amt
+            cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (updated_balance, user_id))
+            conn.commit()
+            print(f"₦{withdrawal_amt:.2f} withdrawn successfully!\nBalance: ₦{updated_balance:.2f}")
+            break
+
 
 def transfer():
     pass
