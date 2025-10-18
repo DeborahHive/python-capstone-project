@@ -187,34 +187,55 @@ def log_in():
             time.sleep(120)
             attempts = 3
 
+
 def homepage(user_id):
-    menu = """
-print("------------------HOME🏡------------------------)
-print("Choose an action:")
+    with sqlite3.connect(USERS_DB) as conn:
+        cursor = conn.cursor()
+
+        while True:
+            cursor.execute("SELECT full_name, account_number, balance FROM users where user_id = ?", (user_id,))
+            user = cursor.fetchone()
+
+            if not user:
+                print("Error: User not found.")
+                return
+            
+            full_name, account_number, balance = user
+
+            menu = f"""
+------------------HOME🏡------------------------
+\nWelcome back, {full_name}!
+Account_number: {account_number}
+Balance: ₦{balance:.2f}
+\nChoose an action:
 1. Deposit
 2. Withdrawal
 3. Transfer
 4. Transaction History
 5. Logout
 """
-    while True:
-        print(menu)
-        choice = input("Choose an option: ").strip()
-
-        if choice == "1":
-            deposit(user_id)
-
-        elif choice == "2":
-            withdrawal(user_id)
         
-        elif choice == "3":
-            transfer()
+            print(menu)
+            choice = input("Choose an option: ").strip()
 
-        elif choice == "4":
-            transaction_history()
+            if choice == "1":
+                deposit(user_id)
 
-        elif choice == "5":
-            break
+            elif choice == "2":
+                withdrawal(user_id)
+            
+            elif choice == "3":
+                transfer(user_id)
+
+            elif choice == "4":
+                transaction_history()
+
+            elif choice == "5":
+                print("Logging out...")
+                break
+
+            conn.commit()
+
 
 def deposit(user_id):
     with sqlite3.connect(USERS_DB) as conn:
@@ -234,6 +255,7 @@ def deposit(user_id):
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (deposit_amt, user_id))
         conn.commit()
         print(f"₦{deposit_amt:.2f} deposited successfully!")
+
 
 def withdrawal(user_id):
     with sqlite3.connect(USERS_DB) as conn:
@@ -263,8 +285,56 @@ def withdrawal(user_id):
             break
 
 
-def transfer():
-    pass
+def transfer(user_id):
+    with sqlite3.connect(USERS_DB) as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT account_number, balance FROM users WHERE user_id = ?", (user_id,))
+        sender = cursor.fetchone()
+        if not sender:
+            print("Error: user not found.")
+            return
+        
+        sender_account, sender_balance = sender
+
+        while True:
+            recipient_account = input("Enter the recipient's account number: ").strip()
+            if not recipient_account:
+                print("This field cannot be blank.")
+                continue
+            if recipient_account == sender_account:
+                print("You cannot transfer money to yourself.")
+                continue
+
+            cursor.execute("SELECT user_id FROM users WHERE account_number = ?", (recipient_account,))
+            recipient = cursor.fetchone()
+            if not recipient:
+                print("Recipient cannot be found.")
+                continue
+            recipient_id = recipient[0]
+            break
+        while True:
+            try:
+                transfer_amt = float(input("Enter amount to transfer: ₦"))
+            except ValueError:
+                print("Please, enter a valid number.")
+                continue
+            if transfer_amt <= 0:
+                print("Amount must be greater than 0.")
+                continue
+            if transfer_amt > sender_balance:
+                print("Insufficient funds.")
+                continue
+            break
+
+        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (transfer_amt, user_id))
+        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (transfer_amt, recipient_id))
+
+        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+        updated_balance = cursor.fetchone()[0]
+        conn.commit()
+        print(f"Transfer successfull!\nBalance: ₦{updated_balance:.2f}")
+
 
 def transaction_history():
     pass
