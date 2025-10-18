@@ -28,6 +28,18 @@ CREATE TABLE IF NOT EXISTS users (
 
     cursor.execute("UPDATE users SET balance = initial_deposit WHERE balance = 0")
 
+    cursor.execute("""
+CREATE TABLE IF NOT EXISTS transactions (
+    transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    transaction_type TEXT NOT NULL,
+    amount REAL NOT NULL CHECK (amount > 0),
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+""")
+    conn.commit()
+
 def account_number_generator(cursor):
     while True:
         account_number = str(random.randint(10_000_000, 99_999_999))
