@@ -4,20 +4,26 @@ import hashlib
 import random
 import time
 import datetime
-# from colorama import Fore, Style
 
 from getpass import getpass
 
 class BankSystem:
     def __init__(self, USERS_DB = "users.db"):
         self.USERS_DB = USERS_DB
-        self.create_tables()
+        self._create_tables()
 
-    def connect(self):
+
+    def _connect(self):
         return sqlite3.connect(self.USERS_DB)
     
-    def create_tables(self):
-        with self.connect() as conn:
+
+    def _wait(self, message="Processing", seconds=2):
+        print(message)
+        time.sleep(seconds)
+
+    
+    def _create_tables(self):
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -26,6 +32,7 @@ class BankSystem:
             username TEXT NOT NULL UNIQUE CHECK (username <> ''),
             email TEXT NOT NULL UNIQUE CHECK (email <> ''),
             password TEXT NOT NULL CHECK (password <> ''),
+            pin TEXT NOT NULL,
             initial_deposit INTEGER NOT NULL CHECK (initial_deposit >= 2000),
             account_number TEXT NOT NULL UNIQUE,
             balance REAL NOT NULL DEFAULT 0
@@ -41,7 +48,7 @@ class BankSystem:
             transaction_type TEXT NOT NULL,
             amount REAL NOT NULL CHECK (amount > 0),
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id)
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
             );
         """)
             
@@ -49,22 +56,63 @@ class BankSystem:
             conn.commit()
 
 
+    def _pin(self, pin):
+        return hashlib.sha256(pin.encode()).hexdigest()
+    
+
+
     def _account_number_generator(self):
         while True:
             account_number = str(random.randint(10_000_000, 99_999_999))
-            with self.connect() as conn:
+            with self._connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1 FROM users WHERE account_number = ?", (account_number,))
                 if cursor.fetchone() is None:
                     return account_number
+                
 
+    def _verify_pin(self, user_id):
+        max_attempts = 3
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT pin FROM users WHERE user_id = ?", (user_id,))
+            result = cursor.fetchone()
+            conn.commit()
+
+        if not result:
+            print("User not found.")
+            return False
+       
+        stored_hashed_pin = result[0]
+
+        while max_attempts > 0:
+            entered_pin = getpass("Enter your 4-digit transaction PIN: ").strip()
+            entered_hashed_pin = hashlib.sha256(entered_pin.encode()).hexdigest()
+
+            if entered_hashed_pin == stored_hashed_pin:
+                self._wait("PIN verified...👍", 1)
+                return True
+            else:
+                max_attempts -= 1
+                print(f"Incorrect PIN. {max_attempts} attempt(s) remaining.")
+                self._wait("Please try again...", 1)
+
+        self._wait("Too many failed PIN attempts. Transaction canceled.", 1)
+        return False
+                
 
     def sign_up(self):
+        name_pattern = r"^[A-Za-z]+(?:[-'][A-Za-z]+)*$"
+
         while True:
             first_name = input("Enter your first name: ").strip()
 
             if not first_name:
                 print("This field cannot be blank.")
+                continue
+
+            if not re.fullmatch(name_pattern, first_name):
+                print("First name must contain only letters (you may include '-' or apostrophe).")
                 continue
             break
 
@@ -74,12 +122,13 @@ class BankSystem:
             if not last_name:
                 print("This field cannot be blank.")
                 continue
+
+            if not re.fullmatch(name_pattern, last_name):
+                print("Last name must contain only letters (you may include '-' or apostrophe).")
+                continue
             break
 
-        full_name = f"{first_name} {last_name}"
-        full_name_pattern = r"^(?=.{4,255}$)[A-Za-z]+(?:[-'][A-Za-z]+)*(?: [A-Za-z]+(?:[-'][A-Za-z]+)*)*$"
-        if re.fullmatch(full_name_pattern, full_name, re.IGNORECASE):
-            full_name = full_name.title()
+        full_name = f"{first_name.title()} {last_name.title()}"
 
         while True:
             username_pattern = r"^(?=.{3,20}$)[A-Za-z][A-Za-z0-9]*$"
@@ -89,9 +138,10 @@ class BankSystem:
                 print("This field cannot be blank.")
                 continue
             if not re.fullmatch(username_pattern, username):
-                print("Invalid username. Must start with a letter and be 6-20 letters/numbers only.")
+                print("Invalid username. Must start with a letter and be 3-20 letters/numbers only.")
                 continue
             break
+
 
         while True:
             email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
@@ -104,6 +154,7 @@ class BankSystem:
                 print("Invalid email")
                 continue
             break
+
 
         while True:
             password_pattern = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,32}$"
@@ -129,6 +180,20 @@ class BankSystem:
             break
         hashed_password = hashlib.sha256(password1.encode()).hexdigest()
 
+
+        while True:
+            pin = getpass("Create a 4-digit transaction PIN: ")
+            if len(pin) == 4 and pin.isdigit():
+                confirm_pin = getpass("Confirm your PIN: ")
+                if pin == confirm_pin:
+                    hashed_pin = self._pin(pin)
+                    break
+                else:
+                    print("PiNs do not match. Please try again.")
+            else:
+                print("Invalid PIN. Please enter a 4-digit number")
+
+
         while True:
             try:
                 initial_deposit = int(input("Enter initial deposit (minimum of ₦2000 required): "))
@@ -141,12 +206,12 @@ class BankSystem:
                 break
 
 
-        with self.connect() as conn:
+        with self._connect() as conn:
             account_number = self._account_number_generator()
             cursor = conn.cursor()
             balance = initial_deposit
             try:
-                cursor.execute("INSERT INTO users (full_name, username, email, password, initial_deposit, account_number, balance) VALUES (?, ?, ?, ?, ?, ?, ?)", (full_name, username, email, hashed_password, initial_deposit, account_number, balance))
+                cursor.execute("INSERT INTO users (full_name, username, email, password, pin, initial_deposit, account_number, balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (full_name, username, email, hashed_password, hashed_pin, initial_deposit, account_number, balance))
             except sqlite3.IntegrityError as exc:
                 exc = str(exc)
                 if exc == "UNIQUE constraint failed: users.email":
@@ -157,16 +222,18 @@ class BankSystem:
                     print(exc)
             else:
                 conn.commit()
+                self._wait("Creating account...", 2)
                 print(f"Account created successfully! Your account number is {account_number}.")
+                self._wait("Redirecting to login...", 1)
                 self.log_in()
 
 
     def log_in(self):
-        attempts = 3
-        with self.connect() as conn:
+        max_attempts = 3
+        with self._connect() as conn:
             cursor = conn.cursor()
             while True:
-                while attempts > 0:
+                while max_attempts > 0:
                     username_pattern = r"^(?=.{6,20}$)[A-Za-z][A-Za-z0-9]*$"
                     email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 
@@ -192,21 +259,21 @@ class BankSystem:
                     user = cursor.fetchone()
 
                     if user:
+                        self._wait("\nLogging in...", 2)
                         print("Log in successful")
                         self.dashboard(user[0])
                         return True
                     
                     else: 
-                        attempts -= 1
+                        max_attempts -= 1
                         print(f"Invalid credentials")
                 
-                print("Too many failed attempts. Please wait two minutes before trying again.")
-                time.sleep(120)
-                attempts = 3
+                self._wait("Too many failed attempts. Please wait one minute before trying again", 60)
+                max_attempts = 3
 
 
     def dashboard(self, user_id):
-        with self.connect() as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             while True:
@@ -252,14 +319,14 @@ Balance: ₦{balance:.2f}
                     self.transaction_history(user_id)
 
                 elif choice == "6":
-                    print("Logging out...")
+                    self._wait("Logging out...", 1)
                     break
 
                 conn.commit()
 
 
     def deposit(self, user_id):
-        with self.connect() as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             while True:
@@ -268,9 +335,19 @@ Balance: ₦{balance:.2f}
                 except ValueError:
                     print("Please, enter a valid number.")
                     continue
+
+
                 if deposit_amt <= 0:
                     print("The amount must be greater than 0")
                     continue
+
+                
+                confirm = input(f"Are you sure you want to deposit ₦{deposit_amt:.2f}? (yes/no): ").strip().lower()
+                if confirm != "yes":
+                    print("Transaction canceled.")
+                    return
+                
+                self._wait("Depositing...", 2)
                 break
 
             cursor.execute("SELECT full_name FROM users where user_id = ?", (user_id,))
@@ -284,7 +361,7 @@ Balance: ₦{balance:.2f}
 
 
     def withdrawal(self, user_id):
-        with self.connect() as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             while True:
@@ -293,9 +370,19 @@ Balance: ₦{balance:.2f}
                 except ValueError:
                     print("Please, enter a valid number.")
                     continue
+                
+
                 if withdrawal_amt <= 0:
                     print("The amount must be greater than 0.")
                     continue
+
+                if not self._verify_pin(user_id):
+                    return
+                
+                confirm = input(f"Are you sure you want to withdraw ₦{withdrawal_amt:.2f}? (yes/no): ").strip().lower()
+                if confirm != "yes":
+                    print("Transaction canceled.")
+                    return
 
                 cursor.execute("SELECT full_name, balance FROM users where user_id = ?", (user_id,))
                 full_name, balance = cursor.fetchone()
@@ -303,6 +390,8 @@ Balance: ₦{balance:.2f}
                 if withdrawal_amt > balance:
                     print(f"Insufficient funds. Your current balance is ₦{balance:.2f}")
                     continue
+
+                self._wait("Processsing withdrawal...", 2)
 
                 updated_balance = balance - withdrawal_amt
                 cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (updated_balance, user_id))
@@ -314,7 +403,7 @@ Balance: ₦{balance:.2f}
 
 
     def transfer(self, user_id):
-        with self.connect() as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             cursor.execute("SELECT full_name, account_number, balance FROM users WHERE user_id = ?", (user_id,))
@@ -348,12 +437,25 @@ Balance: ₦{balance:.2f}
                 except ValueError:
                     print("Please, enter a valid number.")
                     continue
+
+                
                 if transfer_amt <= 0:
                     print("Amount must be greater than 0.")
                     continue
+
                 if transfer_amt > sender_balance:
                     print("Insufficient funds.")
                     continue
+
+                if not self._verify_pin(user_id):
+                    return
+                
+                confirm = input(f"Are you sure you want to transfer ₦{transfer_amt:.2f}? (yes/no): ").strip().lower()
+                if confirm != "yes":
+                    print("Transaction canceled.")
+                    return
+                
+                self._wait("\nProcessing transfer...", 2)
                 break
 
             cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (transfer_amt, user_id))
@@ -362,14 +464,12 @@ Balance: ₦{balance:.2f}
             cursor.execute("INSERT INTO transactions (user_id, full_name, recipient_name, transaction_type, amount, timestamp) VALUES (?, ?, ?, ?, ?, ?)", (user_id, sender_name, recipient_name, "DR-Transfer To", transfer_amt, datetime.datetime.now().isoformat()))
             cursor.execute("INSERT INTO transactions (user_id, recipient_name, full_name, transaction_type, amount, timestamp) VALUES (?, ?, ?, ?, ?, ?)", (recipient_id, recipient_name, sender_name, "CR-Transfer From", transfer_amt, datetime.datetime.now().isoformat()))
 
-            cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-            updated_balance = cursor.fetchone()[0]
             conn.commit()
-            print(f"{transfer_amt:.2f} Transfer successfull!👍")
+            print(f"₦{transfer_amt:.2f} Transfer successfull!👍")
 
 
     def account_details(self, user_id):
-        with self.connect() as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             cursor.execute("SELECT full_name, account_number, email, balance FROM users WHERE user_id = ?", (user_id,))
@@ -379,6 +479,8 @@ Balance: ₦{balance:.2f}
                 print("Account not found.")
                 return
             full_name, account_number, email, balance = user
+
+            self._wait("Details loading...", 2)
             print(f"""
 _________DETAILS_________
 Name: {full_name}
@@ -393,16 +495,17 @@ Balance: ₦{balance:.2f}
         RED = "\033[91m"
         RESET = "\033[0m"
 
-        with self.connect() as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT full_name, recipient_name, transaction_type, amount, timestamp FROM transactions WHERE user_id = ? ORDER BY timestamp DESC", (user_id,))
             
             transactions = cursor.fetchall()
 
             print("\n--------------------TRANSACTION HISTORY--------------------")
+            self._wait("Transaction History Loading...", 2)
 
             if not transactions:
-                print("No transactions found.")
+                print("\nNo transactions found.")
                 return
             
             for transaction in transactions:
@@ -436,14 +539,23 @@ Narration: {narration}
 
     def run(self):
         menu = """
-        1. Sign Up
-        2. Log In
-        3. Exit
+1. Sign up and join the hive
+2. Log in to your account
+3. Exit the hive
         """
-        print("Welcome to Calvary Bank")
+        print("""
+=======================================================================================
+                                 Welcome to HiveBank
+=======================================================================================
+Your trusted digital hive for safe, smart, and seamless banking.
+At HiveBank, we believe every coin counts and every
+customer matters. Whether you're saving for your next big
+dream or sending funds to someone special, your money
+is stored securely — just like honey in the hive.
+              """)
         while True:
-            print(menu)
-            choice = input("Choose an Sign up or Log in to an existing account: ").strip()
+            print(f"\nLet's get started:\n{menu}")
+            choice = input("Choose an action to Sign up or Log in to an existing account: ").strip()
 
             if choice == "1":
                 self.sign_up()
@@ -452,7 +564,7 @@ Narration: {narration}
                 self.log_in()
             
             elif choice == "3":
-                print("Exiting...")
+                self._wait("Quitting...", 1)
                 break
 
 if __name__ == "__main__":
