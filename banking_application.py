@@ -14,21 +14,22 @@ class BankSystem:
     YELLOW = "\033[93m"
     RESET = "\033[0m"
 
-
+    # This initializes the name of the database file and make sure the necessary tables exist
     def __init__(self, USERS_DB = "users.db"):
         self.USERS_DB = USERS_DB
         self._create_tables()
 
-
+    # This connects the code to the database
     def _connect(self):
         return sqlite3.connect(self.USERS_DB)
     
-
+    # This creates slight delay for different actions to make the app feel more real
     def _wait(self, message="Processing...", seconds=2):
         print(f"{self.YELLOW}{message}{self.RESET}")
         time.sleep(seconds)
 
     
+    # Database table creation
     def _create_tables(self):
         with self._connect() as conn:
             cursor = conn.cursor()
@@ -46,6 +47,9 @@ class BankSystem:
         );
         """)
 
+
+            # Transactions table to track all financial activities
+            # Links each transaction to a specific user using the foreign key
             cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +68,7 @@ class BankSystem:
 
 
     def _pin(self, pin):
-        return hashlib.sha256(pin.encode()).hexdigest()  
+        return hashlib.sha256(pin.encode()).hexdigest() 
 
 
     def _account_number_generator(self):
@@ -73,6 +77,7 @@ class BankSystem:
             with self._connect() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1 FROM users WHERE account_number = ?", (account_number,))
+                
                 if cursor.fetchone() is None:
                     return account_number
                 
@@ -88,19 +93,20 @@ class BankSystem:
             conn.commit()
 
         if not result:
-            print(f"{self.RED}User not found.{self.GREEN}")
+            print(f"{self.RED}User not found.{self.RESET}")
             return False
        
         # Takes the first and only stored item from the database
         stored_hashed_pin = result[0]
 
         while max_attempts > 0:
-            entered_pin = getpass("Enter your 4-digit transaction PIN: ").strip()
+            entered_pin = getpass("\nEnter your 4-digit transaction PIN: ").strip()
             entered_hashed_pin = hashlib.sha256(entered_pin.encode()).hexdigest()
 
             if entered_hashed_pin == stored_hashed_pin:
                 self._wait(f"{self.RESET}PIN verified...👍{self.RESET}", 1)
                 return True
+            
             else:
                 max_attempts -= 1
                 print(f"{self.RED}Incorrect PIN. {max_attempts} attempt(s) remaining.{self.RESET}")
@@ -112,93 +118,113 @@ class BankSystem:
     
     def _confirmation(self, action, transaction_amount):
         confirm = input(f"Are you sure you want to {action} ₦{transaction_amount:.2f}? (yes/no): ").strip().lower()
+
         if confirm != "yes":
             print(f"{self.RED}Transaction canceled.{self.RESET}")
             return False
+        
         return True
 
                 
     def sign_up(self):
         name_pattern = r"^[A-Za-z]+(?:[-'][A-Za-z]+)*$"
-
         while True:
-            first_name = input("Enter your first name: ").strip()
+            while True:
+                first_name = input("\nEnter your first name: ").strip().capitalize()
 
-            if not first_name:
-                print(f"{self.RED}This field cannot be blank.{self.RESET}")
+                if not first_name:
+                    print(f"{self.RED}This field cannot be blank.{self.RESET}")
+                    continue
+
+                if not re.fullmatch(name_pattern, first_name):
+                    print(f"{self.RED}First name must contain only letters (you may include '-' or apostrophe).{self.RESET}")
+                    continue
+
+                break
+
+            while True:
+                last_name = input("\nEnter your last name: ").strip().capitalize()
+
+                if not last_name:
+                    print(f"{self.RED}This field cannot be blank.{self.RESET}")
+                    continue
+
+                if not re.fullmatch(name_pattern, last_name):
+                    print(f"{self.RED}Last name must contain only letters (you may include '-' or apostrophe.{self.RESET}")
+                    continue
+                break
+
+            while True:
+                middle_name = input("\nEnter your middle name: ").strip().capitalize()
+
+                if not middle_name:
+                    print(f"{self.RED}This field cannot be blank.{self.RESET}")
+                    continue
+
+                if not re.fullmatch(name_pattern, middle_name):
+                    print(f"{self.RED}Middle name must contain only letters (you may include '-' or apostrophe).{self.RESET}")
+                    continue
+
+                break
+
+            combined_names = first_name + last_name + middle_name
+
+            if len(combined_names) < 4 or len(combined_names) > 255:
+                print(f"{self.RED}Full name must be between 4 and 255 characters long.{self.RESET}")
+                print(f"{self.YELLOW}Please enter your names again.{self.RESET}")
                 continue
 
-            if not re.fullmatch(name_pattern, first_name):
-                print(f"{self.RED}First name must contain only letters (you may include '-' or apostrophe).{self.RESET}")
-                continue
+            full_name = f"{first_name} {middle_name} {last_name}"
             break
-
-        while True:
-            last_name = input("Enter your last name: ").strip()
-
-            if not last_name:
-                print(f"{self.RED}This field cannot be blank.{self.RESET}")
-                continue
-
-            if not re.fullmatch(name_pattern, last_name):
-                print(f"{self.RED}Last name must contain only letters (you may include '-' or apostrophe.{self.RESET}")
-                continue
-            break
-
-        while True:
-            middle_name = input("Enter your middle name: ").strip()
-
-            if not middle_name:
-                print(f"{self.RED}This field cannot be blank.{self.RESET}")
-                continue
-
-            if not re.fullmatch(name_pattern, middle_name):
-                print(f"{self.RED}Middle name must contain only letters (you may include '-' or apostrophe).{self.RESET}")
-                continue
-            break
-
-        full_name = f"{first_name.title()} {middle_name.title()} {last_name.title()}"
 
         while True:
             username_pattern = r"^(?=.{3,20}$)[A-Za-z][A-Za-z0-9]*$"
-            username = input("Enter your username: ").strip()
+            username = input("\nEnter your username: ").strip()
 
             if not username:
                 print(f"{self.RED}This field cannot be blank.{self.RESET}")
                 continue
+
             if not re.fullmatch(username_pattern, username):
                 print(f"{self.RED}Invalid username. Must start with a letter and be 3-20 letters/numbers only.{self.RESET}")
                 continue
+
             break
 
 
         while True:
             email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-            email = input("Enter your email: ").strip()
+            email = input("\nEnter your email: ").strip()
 
             if not email:
                 print(f"{self.RED}This field cannot be blank.{self.RESET}")
                 continue
+
             if not re.fullmatch(email_pattern, email):
                 print(f"{self.RED}Invalid email{self.RESET}")
                 continue
+
             break
 
 
         while True:
             password_pattern = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,32}$"
-            password1 = getpass("Enter a password: ").strip()
+            password1 = getpass("\nEnter a password: ").strip()
+
             if not password1:
                 print(f"{self.RED}This field cannot be blank.{self.RESET}")
                 continue
+
             if not re.fullmatch(password_pattern, password1):
                 print(f"{self.RED}Invalid password. Must include upper, lower, number, symbol, and be 8-32 chars long.{self.RESET}")
                 continue
 
-            password2 = getpass("Confirm your password: ").strip()
+            password2 = getpass("\nConfirm your password: ").strip()
+
             if not password2:
                 print("Confirm password field cannot be blank.")
                 continue
+
             if not re.fullmatch(password_pattern, password2):
                 print(f"{self.RED}Invalid password. Must include upper, lower, number, symbol, and be 8-32 chars long.{self.RESET}")
                 continue
@@ -206,26 +232,32 @@ class BankSystem:
             if password1 != password2:
                 print(f"{self.RED}Password do not match!{self.RESET}")
                 continue
+
             break
+
         hashed_password = hashlib.sha256(password1.encode()).hexdigest()
 
 
         while True:
-            pin = getpass("Create a 4-digit transaction PIN: ")
+            pin = getpass("\nCreate a 4-digit transaction PIN: ")
+
             if len(pin) == 4 and pin.isdigit():
-                confirm_pin = getpass("Confirm your PIN: ")
+                confirm_pin = getpass("\nConfirm your PIN: ")
+
                 if pin == confirm_pin:
                     hashed_pin = self._pin(pin)
                     break
+                
                 else:
                     print(f"{self.RED}PiNs do not match. Please try again.{self.RESET}")
+
             else:
-                print(f"{self.RED}Invalid PIN. Please enter a 4-digit number{self.RESET}")
+                print(f"{self.RED}Invalid PIN. Please enter a 4-digit number.{self.RESET}")
 
 
         while True:
             try:
-                initial_deposit = int(input("Enter initial deposit (minimum of ₦2000 required): "))
+                initial_deposit = int(input("\nEnter initial deposit (minimum of ₦2000 required): ₦"))
             except ValueError:
                 print(f"{self.RED}Initial deposit must be integers.{self.RESET}")
             else:
@@ -269,17 +301,17 @@ class BankSystem:
                     username_or_email = input("\nEnter your username or email: ").strip()
 
                     if not username_or_email:
-                        print(f"{self.RED}This field cannot be blank.{self.RESET}")
+                        print(f"{self.RED}This field cannot be blank.\n{self.RESET}")
                         continue
 
                     if not (re.fullmatch(username_pattern, username_or_email)) and not (re.fullmatch(email_pattern, username_or_email)):
-                        print(f"{self.RED}Invalid username or email{self.RESET}")
+                        print(f"{self.RED}Invalid username or email\n{self.RESET}")
                         continue
 
-                    password1 = getpass("Enter your password: ").strip()
+                    password1 = getpass("\nEnter your password: ").strip()
 
                     if not password1:
-                        print(f"{self.RED}This field cannot be blank.{self.RESET}")
+                        print(f"{self.RED}This field cannot be blank.\n{self.RESET}")
                         continue
                     
                     hashed_password = hashlib.sha256(password1.encode()).hexdigest()
@@ -293,7 +325,7 @@ class BankSystem:
                         self._wait("\nLogging in...", 2)
                         print("Log in successful")
 
-                        # passing the user_id from the row to open the dashboard for the user
+                        # Passing the user_id from the row to open the dashboard for the user
                         self.dashboard(user[0]) 
                         return True
                     
@@ -372,7 +404,6 @@ Balance: ₦{balance:,.2f}
                     print(f"{self.RED}Please, enter a valid number.{self.RESET}")
                     continue
 
-
                 if deposit_amt <= 0:
                     print(f"{self.RED}The amount must be greater than 0{self.RESET}")
                     continue
@@ -386,6 +417,7 @@ Balance: ₦{balance:,.2f}
             cursor.execute("SELECT full_name FROM users WHERE user_id = ?", (user_id,))
             full_name = cursor.fetchone()[0]
 
+            # Adds to their balance since a deposit has been made and logs the user's transaction
             cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (deposit_amt, user_id))
             cursor.execute("INSERT INTO transactions (user_id, full_name, transaction_type, amount, timestamp) VALUES (?, ?, ?, ?, ?)", (user_id, full_name, "CR-Deposit", deposit_amt, datetime.datetime.now().isoformat()))
 
@@ -426,6 +458,7 @@ Balance: ₦{balance:,.2f}
                 break
 
             updated_balance = balance - withdrawal_amt
+            # Subtracts from their balance since a withdrawal has been made and logs the user's transaction
             cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (updated_balance, user_id))
             cursor.execute("INSERT INTO transactions (user_id, full_name, transaction_type, amount, timestamp) VALUES (?, ?, ?, ?, ?)", (user_id, full_name, "DR-Withdrawal", withdrawal_amt, datetime.datetime.now().isoformat()))
 
@@ -459,6 +492,7 @@ Balance: ₦{balance:,.2f}
                 if not recipient:
                     print(f"{self.RED}Recipient cannot be found.{self.RESET}")
                     continue
+
                 recipient_id, recipient_name = recipient
 
                 self._wait("Processing...", 1)
@@ -467,12 +501,11 @@ Balance: ₦{balance:,.2f}
 
             while True:
                 try:
-                    transfer_amt = float(input("Enter amount to transfer: ₦"))
+                    transfer_amt = float(input("\nEnter amount to transfer: ₦"))
                 except ValueError:
                     print(f"{self.RED}Please, enter a valid number.{self.RESET}")
                     continue
 
-                
                 if transfer_amt <= 0:
                     print(f"{self.RED}Amount must be greater than 0.{self.RESET}")
                     continue
@@ -493,7 +526,7 @@ Balance: ₦{balance:,.2f}
             cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (transfer_amt, user_id))
             cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (transfer_amt, recipient_id))
 
-            # This logs the sender (---> money leaving)and recipient (---> money entering) transactions 
+            # This logs the sender (---> money leaving) and recipient (---> money entering) transactions
             cursor.execute("INSERT INTO transactions (user_id, full_name, recipient_name, transaction_type, amount, timestamp) VALUES (?, ?, ?, ?, ?, ?)", (user_id, sender_name, recipient_name, "DR-Transfer To", transfer_amt, datetime.datetime.now().isoformat()))
             cursor.execute("INSERT INTO transactions (user_id, recipient_name, full_name, transaction_type, amount, timestamp) VALUES (?, ?, ?, ?, ?, ?)", (recipient_id, recipient_name, sender_name, "CR-Transfer From", transfer_amt, datetime.datetime.now().isoformat()))
 
@@ -511,6 +544,7 @@ Balance: ₦{balance:,.2f}
             if not user:
                 print(f"{self.RED}Account not found.{self.RESET}")
                 return
+            
             full_name, username, account_number, email, balance = user
 
             self._wait("Details loading...", 2)
@@ -598,6 +632,7 @@ is stored securely — just like honey in the hive.
                 break
 
 
+# This creates BankSystem instance and starts the application
 if __name__ == "__main__":
     app = BankSystem()
     app.run_interface()
